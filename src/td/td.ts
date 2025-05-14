@@ -1,6 +1,6 @@
-import type { Browser, ElementHandle, JSHandle, Page } from 'puppeteer';
+import type { Browser, ElementHandle, Page } from 'puppeteer';
 import { elementBySelectorAndTextContent } from '../browser/wait_for_functions.ts';
-import { textContent } from '../browser/evaluate_functions.ts';
+import { getTextContent } from '../browser/evaluate_functions.ts';
 
 export interface Logger {
   info(...args: unknown[]): unknown;
@@ -71,9 +71,21 @@ class TdPageController {
     this.#logger.info('Enter login information into web page, if requested.');
     await this.#waitForPageSettled();
     await this.#clickStatementsAndDocumentsButton();
-    await this.#waitForPageSettled();
     await this.#clickSelectAccountButton();
-    await this.#listAccounts();
+
+    const accountNames = await this.#getAccountNamesFromAccountList(await this.#getAccountElementsFromAccountList());
+    this.#logger.info(`Found ${accountNames.length} accounts:`);
+    accountNames.forEach((accountName, index) => {
+      this.#logger.info(`Account #${index+1}: "${accountName}"`);
+    });
+
+    for (let accountIndex=0; accountIndex<accountNames.length; accountIndex++) {
+      const accountName = accountNames[accountIndex]!;
+      await this.#clickMyAccountsButton();
+      await this.#clickSelectAccountButton();
+      await this.#selectAccountFromAccountList(accountName);
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
   }
 
   async #waitForPageSettled(): Promise<void> {
@@ -107,22 +119,50 @@ class TdPageController {
   }
 
   async #clickSelectAccountButton(): Promise<void> {
-    await this.#clickButtonWhenVisible('span.mat-select-placeholder', 'Select an account');
+    this.#logger.info(`Clicking "Select Account" button`);
+    const selectAccountButtonSelector = 'div.uf-dropdown-chip-trigger';
+    await this.#page.waitForSelector(selectAccountButtonSelector, {timeout: 0, visible:true});
+    const buttons = await this.#page.$$(selectAccountButtonSelector);
+    if (!buttons || typeof buttons !== "object" || buttons.length !== 3) {
+      throw new Error(`unable to find "Select Account" button: buttons=${buttons}`);
+    }
+    await buttons[0]!.click();
   }
 
-  async #listAccounts(): Promise<void> {
-    const accountListSelector = 'span.tduf-dropdown-chip-option-detail-primary';
+  async #clickMyAccountsButton(): Promise<void> {
+    await this.#clickButtonWhenVisible('tduf-top-nav-link', 'My Accounts', {
+      clickCausesNavigation: true,
+    });
+  }
 
+  async #getAccountElementsFromAccountList(): Promise<ElementHandle[]> {
     this.#logger.info('Waiting for account list to display...');
-    await this.#page.waitForSelector(accountListSelector, { timeout: 0, visible: true });
+    const listBox = await this.#page.waitForSelector("#matselect-mat-select-0-panel");
+    return listBox!.$$(".tduf-dropdown-chip-option-detail-primary");
+  }
 
-    const accountElementHandles: ElementHandle[] = await this.#page.$$(accountListSelector);
-    this.#logger.info(`Found ${accountElementHandles.length} accounts`);
-    for (let i = 0; i < accountElementHandles.length; i++) {
-      const elementHandle = accountElementHandles[i]!;
-      const elementText = await elementHandle.evaluate(textContent);
-      this.#logger.info(`Account ${i + 1}: ${elementText}`);
+  async #getAccountNamesFromAccountList(accountElements: ElementHandle[]): Promise<string[]> {
+    const accountNames: string[] = [];
+    for (const accountElement of accountElements) {
+      const elementText = await accountElement.evaluate(getTextContent);
+      accountNames.push(`${elementText}`);
     }
+    return accountNames;
+  }
+
+  async #selectAccountFromAccountList(accountName: string): Promise<void> {
+    this.#logger.info(`Selecting account from account list: "${accountName}"`);
+
+    const accountElements = await this.#getAccountElementsFromAccountList();
+    const accountNames = await this.#getAccountNamesFromAccountList(accountElements);
+    const accountIndex = accountNames.indexOf(accountName);
+    if (accountIndex < 0) {
+      throw new Error(`could not find account element for account with name: "${accountName}" ` +
+      `(got ${accountNames.length} names: ${accountNames.map(name => `"${name}"`).join(", ")}) ` +
+      "[rpxr6stvh2]");
+    }
+
+    await accountElements[accountIndex]!.click();
   }
 
   async #clickButtonWhenVisible(

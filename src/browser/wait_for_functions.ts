@@ -4,7 +4,7 @@ export function elementBySelectorAndTextContent(
 ): Element | undefined {
   const elements = document.querySelectorAll(selector);
   for (const element of elements) {
-    if (element.textContent === expectedTextContent) {
+    if (typeof element.textContent === "string" && element.textContent.trim() === expectedTextContent) {
       return element;
     }
   }

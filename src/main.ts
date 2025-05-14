@@ -3,6 +3,8 @@ import signale from 'signale';
 
 import { TdPuppeteer } from './td/td.ts';
 
+const leaveBrowserOpen = true;
+
 const logger = new signale.Signale({
   config: {
     displayScope: false,
@@ -16,5 +18,13 @@ const logger = new signale.Signale({
 
 const browser = await puppeteer.launch({ headless: false });
 const tdPuppeteer = new TdPuppeteer(logger);
-await tdPuppeteer.run(browser).finally(() => tdPuppeteer.close());
-await browser.close();
+
+if (leaveBrowserOpen) {
+  tdPuppeteer.run(browser).catch(error => console.error(error)).finally(() => {
+    logger.info("Not closing browser, by request");
+  })
+} else{
+  await tdPuppeteer.run(browser).finally(() => tdPuppeteer.close());
+  await browser.close();
+}
+
