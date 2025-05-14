@@ -10,8 +10,8 @@ const logger = new signale.Signale({
     displayDate: true,
     displayTimestamp: true,
     displayFilename: false,
-    displayLabel: false
-  }
+    displayLabel: false,
+  },
 });
 
 const browser = await puppeteer.launch({ headless: false });

@@ -1,4 +1,4 @@
-import type { Browser, ElementHandle, JSHandle, Page} from 'puppeteer';
+import type { Browser, ElementHandle, JSHandle, Page } from 'puppeteer';
 import { elementBySelectorAndTextContent } from '../browser/wait_for_functions.ts';
 import { textContent } from '../browser/evaluate_functions.ts';
 
@@ -8,7 +8,6 @@ export interface Logger {
 }
 
 export class TdPuppeteer {
-
   readonly #logger: Logger;
   #state: State = new NewState();
 
@@ -17,7 +16,7 @@ export class TdPuppeteer {
   }
 
   async run(browser: Browser): Promise<void> {
-    if (this.#state.name !== "new") {
+    if (this.#state.name !== 'new') {
       throw new Error(`unexpected state: "${this.#state.name}" (expected "new")`);
     }
     const abortController = new AbortController();
@@ -34,19 +33,19 @@ export class TdPuppeteer {
   }
 
   #transitionToClosed(): ClosedState {
-    if ("abortController" in this.#state) {
-      this.#state.abortController.abort("closed");
+    if ('abortController' in this.#state) {
+      this.#state.abortController.abort('closed');
     }
 
-    if (this.#state.name === "new") {
+    if (this.#state.name === 'new') {
       return new ClosedState(null);
-    } else if (this.#state.name === "starting") {
+    } else if (this.#state.name === 'starting') {
       const promise = closePromisedPage(this.#state.promise, this.#logger);
       return new ClosedState(promise);
-    } else if (this.#state.name === "started") {
+    } else if (this.#state.name === 'started') {
       const promise = closePage(this.#state.page, this.#logger);
       return new ClosedState(promise);
-    } else if (this.#state.name === "closed") {
+    } else if (this.#state.name === 'closed') {
       return this.#state;
     } else {
       throw new Error(`internal error: unknown state: ${this.#state} [mdkxnfn6vd]`);
@@ -55,7 +54,6 @@ export class TdPuppeteer {
 }
 
 class TdPageController {
-
   readonly #page: Page;
   readonly #abortSignal: AbortSignal;
   readonly #logger: Logger;
@@ -70,82 +68,108 @@ class TdPageController {
     await this.#page.setViewport(null);
     await this.#page.goto('https://easyweb.td.com/');
     this.#closeCookieDialogWhenDisplayed();
-    this.#logger.info("Enter login information into web page, if requested.");
-    await this.#navigateToStatementsPage();
-    await this.#downloadStatementsForEachAccount();
+    this.#logger.info('Enter login information into web page, if requested.');
+    await this.#waitForPageSettled();
+    await this.#clickStatementsAndDocumentsButton();
+    await this.#waitForPageSettled();
+    await this.#clickSelectAccountButton();
+    await this.#listAccounts();
+  }
+
+  async #waitForPageSettled(): Promise<void> {
+    await this.#page.waitForNavigation({
+      timeout: 0,
+      waitUntil: ['load', 'domcontentloaded', 'networkidle0'],
+    });
   }
 
   #closeCookieDialogWhenDisplayed(): void {
     const asyncFunction = async () => {
-      this.#logger.info("Watching for cookie dialog... will close it if found");
-      const elementHandle = await this.#page.waitForSelector("button.onetrust-close-btn-handler", {timeout: 0, signal: this.#abortSignal, visible: true});
-      this.#logger.info("Dismissing cookie dialog");
+      this.#logger.info('Watching for cookie dialog... will close it if found');
+      const elementHandle = await this.#page.waitForSelector('button.onetrust-close-btn-handler', {
+        timeout: 0,
+        signal: this.#abortSignal,
+        visible: true,
+      });
+      this.#logger.info('Dismissing cookie dialog');
       await elementHandle!.click();
-      this.#logger.info("Cookie dialog dismissed successfully");
-    }
+      this.#logger.info('Cookie dialog dismissed successfully');
+    };
     asyncFunction().catch(error => {
-      this.#logger.warn("Dismissing cookie dialog failed:", error);
+      this.#logger.warn('Dismissing cookie dialog failed:', error);
     });
   }
 
-  async #navigateToStatementsPage(): Promise<void> {
-    const buttonText = "Statements & Documents" as const;
-
-    this.#logger.info(`Waiting for button: "${buttonText}"`)
-    const statementsButton: ElementHandle = await this.#page.waitForFunction(
-      elementBySelectorAndTextContent,
-      {timeout: 0},
-      "tduf-quick-link-item a span",
-      buttonText,
-    );
-
-    this.#logger.info(`Clicking button: "${buttonText}"`);
-    await statementsButton.click();
+  async #clickStatementsAndDocumentsButton(): Promise<void> {
+    await this.#clickButtonWhenVisible('tduf-quick-link-item a span', 'Statements & Documents', {
+      clickCausesNavigation: true,
+    });
   }
 
-  async #downloadStatementsForEachAccount(): Promise<void> {
-    await this.#clickButtonWhenVisible("span.mat-select-placeholder", "Select an account");
+  async #clickSelectAccountButton(): Promise<void> {
+    await this.#clickButtonWhenVisible('span.mat-select-placeholder', 'Select an account');
+  }
 
-    const accountListSelector = "span.tduf-dropdown-chip-option-detail-primary";
-    if (! (await this.#page.$(accountListSelector))?.isVisible()) {
-      this.#logger.info("Waiting for account list to display...");
-      await this.#page.waitForSelector(accountListSelector, {timeout: 0, visible: true});
-    }
+  async #listAccounts(): Promise<void> {
+    const accountListSelector = 'span.tduf-dropdown-chip-option-detail-primary';
+
+    this.#logger.info('Waiting for account list to display...');
+    await this.#page.waitForSelector(accountListSelector, { timeout: 0, visible: true });
 
     const accountElementHandles: ElementHandle[] = await this.#page.$$(accountListSelector);
     this.#logger.info(`Found ${accountElementHandles.length} accounts`);
-    for (let i=0; i<accountElementHandles.length; i++) {
+    for (let i = 0; i < accountElementHandles.length; i++) {
       const elementHandle = accountElementHandles[i]!;
       const elementText = await elementHandle.evaluate(textContent);
-      this.#logger.info(`Account ${i+1}: ${elementText}`);
+      this.#logger.info(`Account ${i + 1}: ${elementText}`);
     }
   }
 
-  async #clickButtonWhenVisible(selector: string, text: string): Promise<void> {
+  async #clickButtonWhenVisible(
+    selector: string,
+    text: string,
+    options?: Readonly<Partial<ClickButtonWhenVisibleOptions>>,
+  ): Promise<void> {
+    const clickCausesNavigation = options?.clickCausesNavigation ?? false;
+
     let elementHandle = await this.#waitForElementBySelectorAndTextContent(selector, text);
     this.#logger.info(`Clicking button: "${text}"`);
-    await elementHandle.click();
+
+    const promises: Promise<unknown>[] = [];
+    if (clickCausesNavigation) {
+      promises.push(this.#page.waitForNavigation());
+    }
+    promises.push(elementHandle.click());
+    await Promise.all(promises);
   }
 
-  async #waitForElementBySelectorAndTextContent(selector: string, textContent: string): Promise<ElementHandle> {
-    let elementHandle: ElementHandle = await this.#page.evaluate(elementBySelectorAndTextContent, selector, textContent);
-    if (elementHandle.remoteObject().type !== "undefined") {
-      return elementHandle;
-    }
+  async #waitForElementBySelectorAndTextContent(
+    selector: string,
+    textContent: string,
+  ): Promise<ElementHandle> {
     this.#logger.info(`Waiting for element with text: "${textContent}"`);
-    return this.#page.waitForFunction(elementBySelectorAndTextContent, {timeout: 0}, selector, textContent);
+    return this.#page.waitForFunction(
+      elementBySelectorAndTextContent,
+      { timeout: 0 },
+      selector,
+      textContent,
+    );
   }
 }
 
+interface ClickButtonWhenVisibleOptions {
+  clickCausesNavigation: boolean;
+}
+
 async function closePage(page: Page, logger: Logger): Promise<void> {
-  logger.info("Closing TD page");
+  logger.info('Closing TD page');
   try {
     await page.close();
   } catch (error: unknown) {
-    logger.warn("Closing TD page failed:", error);
+    logger.warn('Closing TD page failed:', error);
     return;
   }
-  logger.info("Closed TD page");
+  logger.info('Closed TD page');
 }
 
 async function closePromisedPage(promise: Promise<Page>, logger: Logger): Promise<void> {
@@ -159,7 +183,7 @@ async function closePromisedPage(promise: Promise<Page>, logger: Logger): Promis
   await closePage(page, logger);
 }
 
-type StateName = "new" | "starting" | "started" | "closed";
+type StateName = 'new' | 'starting' | 'started' | 'closed';
 
 abstract class BaseState<T extends StateName> {
   readonly name: T;
@@ -169,39 +193,39 @@ abstract class BaseState<T extends StateName> {
   }
 }
 
-class NewState extends BaseState<"new"> {
+class NewState extends BaseState<'new'> {
   constructor() {
-    super("new");
+    super('new');
   }
 }
 
-class StartingState extends BaseState<"starting"> {
+class StartingState extends BaseState<'starting'> {
   readonly abortController;
   readonly promise: Promise<Page>;
   constructor(promise: Promise<Page>, abortController: AbortController) {
-    super("starting");
+    super('starting');
     this.promise = promise;
     this.abortController = abortController;
   }
 }
 
-class StartedState extends BaseState<"started"> {
+class StartedState extends BaseState<'started'> {
   readonly page: Page;
   readonly abortController: AbortController;
 
   constructor(page: Page, abortController: AbortController) {
-    super("started");
+    super('started');
     this.page = page;
     this.abortController = abortController;
   }
 }
 
-class ClosedState extends BaseState<"closed"> {
+class ClosedState extends BaseState<'closed'> {
   readonly promise: Promise<void> | null;
   constructor(promise: Promise<void> | null) {
-    super("closed");
+    super('closed');
     this.promise = promise;
   }
 }
 
-type State = NewState | StartingState | StartedState | ClosedState
+type State = NewState | StartingState | StartedState | ClosedState;
