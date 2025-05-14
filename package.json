@@ -1,0 +1,40 @@
+{
+  "name": "finscrape",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prettier": "prettier --write .",
+    "prettier:check": "prettier --check .",
+    "lint": "eslint --fix .",
+    "lint:check": "eslint .",
+    "tsc": "tsc -b"
+  },
+  "type": "module",
+  "prettier": {
+    "arrowParens": "avoid",
+    "printWidth": 100,
+    "quoteProps": "preserve",
+    "singleQuote": false,
+    "trailingComma": "all"
+  },
+  "dependencies": {
+    "fs-extra": "^11.3.0",
+    "puppeteer": "^24.8.2",
+    "signale": "^1.4.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "@tsconfig/node24": "^24.0.0",
+    "@types/node": "^22.15.18",
+    "@types/signale": "^1.4.7",
+    "@types/yargs": "^17.0.33",
+    "eslint": "^9.23.0",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.28.0"
+  }
+}

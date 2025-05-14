@@ -1,0 +1,40 @@
+{
+  "extends": "@tsconfig/node24/tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+
+    "rootDir": ".",
+    "outDir": "build",
+
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "allowUnreachableCode": true,
+    "allowUnusedLabels": false,
+    "alwaysStrict": true,
+    "erasableSyntaxOnly": true,
+    "esModuleInterop": true,
+    "exactOptionalPropertyTypes": true,
+    "experimentalDecorators": false,
+    "isolatedDeclarations": true,
+    "isolatedModules": true,
+    "newLine": "lf",
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveConstEnums": true,
+    "pretty": true,
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": false,
+    "strict": true,
+    "useDefineForClassFields": true,
+    "useDefineForClassFields": true,
+    "verbatimModuleSyntax": true,
+
+    "types": []
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "include": [],
+  "references": [
+    { "path": "./src" },
+    { "path": "./src/td" },
+    { "path": "./src/util" },
+    { "path": "./src/util/browser" }
+  ]
+}
