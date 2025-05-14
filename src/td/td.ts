@@ -27,12 +27,47 @@ export class TdPuppeteer {
   }
 
   close(): Promise<void> {
-    if (this.#state.name === "started") {
-      this.#logger.info("Closing TD page");
-      this.#state.page.close().then(() => this.#logger.info("Closed TD page")).catch(error => this.#logger.warn("Closing TD page failed:", error));
-    }
-    this.#state = new ClosedState();
+    this.#state = this.#transitionToClosed();
+    return this.#state.promise ?? Promise.resolve();
   }
+
+  #transitionToClosed(): ClosedState {
+    if (this.#state.name === "new") {
+      return new ClosedState(null);
+    } else if (this.#state.name === "starting") {
+      const promise = closePromisedPage(this.#state.promise, this.#logger);
+      return new ClosedState(promise);
+    } else if (this.#state.name === "started") {
+      const promise = closePage(this.#state.page, this.#logger);
+      return new ClosedState(promise);
+    } else if (this.#state.name === "closed") {
+      return this.#state;
+    } else {
+      throw new Error(`internal error: unknown state: ${this.#state} [mdkxnfn6vd]`);
+    }
+  }
+}
+
+async function closePage(page: Page, logger: Logger): Promise<void> {
+  logger.info("Closing TD page");
+  try {
+    await page.close();
+  } catch (error: unknown) {
+    logger.warn("Closing TD page failed:", error);
+    return;
+  }
+  logger.info("Closed TD page");
+}
+
+async function closePromisedPage(promise: Promise<Page>, logger: Logger): Promise<void> {
+  let page: Page;
+  try {
+    page = await promise;
+  } catch (error) {
+    // Opening the page failed; therefore, there is nothing to "close"
+    return;
+  }
+  await closePage(page, logger);
 }
 
 type StateName = "new" | "starting" | "started" | "closed";
@@ -69,8 +104,10 @@ class StartedState extends BaseState<"started"> {
 }
 
 class ClosedState extends BaseState<"closed"> {
-  constructor() {
+  readonly promise: Promise<void> | null;
+  constructor(promise: Promise<void> | null) {
     super("closed");
+    this.promise = promise;
   }
 }
 
