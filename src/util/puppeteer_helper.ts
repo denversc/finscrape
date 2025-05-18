@@ -131,25 +131,26 @@ export class PuppeteerHelper {
     buttonText: string,
     options?: { waitForNavigation?: boolean; waitForVisible?: boolean },
   ): Promise<void> {
-    await this.clickElementWithText({ ...options, tagName: "button", text: buttonText });
+    await this.clickElementWithText({ ...options, selector: "button", text: buttonText });
   }
 
   async clickElementWithText(args: {
-    tagName: string;
+    selector: string;
     text: string;
     waitForNavigation?: boolean;
     waitForVisible?: boolean;
   }): Promise<void> {
-    const { tagName, text } = args;
+    const { selector, text } = args;
     const waitForVisible = args.waitForVisible ?? false;
     const waitForNavigation = args.waitForNavigation ?? false;
 
     if (waitForVisible) {
-      await this.waitForElement({ tagName, text });
+      await this.waitForElement({ selector, text });
     }
 
-    this.#logger.info(`Clicking element with tag "${tagName} and text: "${text}"`);
-    const elements = await this.#page.$$(tagName);
+    this.#logger.info(`Clicking element matching selector "${selector}" ` +
+      `and text content: "${text}"`);
+    const elements = await this.#page.$$(selector);
     const matchingElements: Array<(typeof elements)[number]> = [];
     for (const element of elements) {
       if (!(await element.isVisible())) {
@@ -165,7 +166,8 @@ export class PuppeteerHelper {
     }
     if (matchingElements.length !== 1) {
       throw new Error(
-        `Clicking element with tag "${tagName} and text: "${text}" FAILED: ` +
+        `Clicking element matching selector "${selector}" ` +
+        `and text content: "${text}" FAILED: ` +
           `expected to find exactly 1 matching element, ` +
           `but found ${matchingElements.length} [fzt64ga7nw]`,
       );
@@ -204,13 +206,14 @@ export class PuppeteerHelper {
     await button.click();
   }
 
-  async waitForElement(args: { tagName: string; text: string }): Promise<void> {
-    const { tagName, text } = args;
-    this.#logger.info(`Waiting for element with tag "${tagName} and text: "${text}"`);
+  async waitForElement(args: { selector: string; text: string }): Promise<void> {
+    const { selector, text } = args;
+    this.#logger.info(`Waiting for element matching selector "${selector}" ` +
+    `with text content: "${text}"`);
     await this.#page.waitForFunction(
       elementBySelectorAndTextContent,
       { timeout: 0 },
-      tagName,
+      selector,
       text,
     );
   }

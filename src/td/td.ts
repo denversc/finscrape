@@ -19,9 +19,14 @@ export async function run(
   await helper.clickButtonWithText("login", { waitForNavigation: true });
   await helper.clickButtonWithSelector("div.uf-trigger-icon");
   await helper.clickElementWithText({
-    tagName: "tduf-top-nav-menu-option",
+    selector: "tduf-top-nav-menu-option",
     text: "Statements & Documents",
     waitForNavigation: true,
     waitForVisible: true,
   });
+  await helper.clickElementWithText({
+    selector: "span.mat-select-placeholder",
+    text: "Select an Account",
+    waitForVisible: true,
+  })
 }
