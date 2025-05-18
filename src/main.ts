@@ -45,4 +45,5 @@ if (leaveBrowserOpen) {
 } else {
   await td.run(puppeteerHelper, username, encryptedPasswordFile);
   await browser.close();
+  await puppeteerHelper.close();
 }

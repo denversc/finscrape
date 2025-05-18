@@ -1,3 +1,4 @@
+import { getTextContent } from "../util/browser/evaluate_functions.ts";
 import { type PuppeteerHelper } from "../util/puppeteer_helper.ts";
 
 export async function run(
@@ -12,7 +13,9 @@ export async function run(
 
   const accountNames = await getAccountNames(helper);
   logger.info(`Found ${accountNames.length} accounts:`);
-  accountNames.forEach((accountName, index) => logger.info(`  Account #${index+1}: "${accountName}"`));
+  accountNames.forEach((accountName, index) =>
+    logger.info(`  Account #${index + 1}: "${accountName}"`),
+  );
 
   let accountNameIndex = 0;
   while (accountNameIndex < accountNames.length) {
@@ -20,9 +23,35 @@ export async function run(
     logger.info(`Downloading statements for account: ${accountName}`);
     accountNameIndex++;
     if (accountNameIndex > 0) {
-      await helper.clickElementWithText({selector: ".tduf-dropdown-chip-option-detail-primary", text: accountNames[accountNameIndex-1]!, waitForVisible:true, waitForNetworkIdle: true});
+      await helper.clickElementWithText({
+        selector: ".tduf-dropdown-chip-option-detail-primary",
+        text: accountNames[accountNameIndex - 1]!,
+        waitForVisible: true,
+        waitForNetworkIdle: true,
+      });
     }
-    await helper.clickElementWithText({selector: ".tduf-dropdown-chip-option-detail-primary", text: accountName, waitForVisible:true, waitForNetworkIdle: true});
+    await helper.clickElementWithText({
+      selector: ".tduf-dropdown-chip-option-detail-primary",
+      text: accountName,
+      waitForVisible: true,
+      waitForNetworkIdle: true,
+    });
+
+    await helper.page.waitForSelector("tbody", { timeout: 0 });
+    const rows = await helper.page.$$("tbody > tr.mat-row > td.mat-cell:first-child");
+
+    for (const row of rows) {
+      const date = (await row.evaluate(getTextContent))?.trim();
+      if (!date) {
+        continue;
+      }
+      logger.info(`Downloading statement for date: ${date}`);
+      await row.scrollIntoView();
+      await row.click();
+      break;
+    }
+
+    break;
   }
 }
 
@@ -45,9 +74,7 @@ async function login(
   await helper.clickButtonWithText("login", { waitForNavigation: true });
 }
 
-async function goToStatementsAndDocuments(
-  helper: PuppeteerHelper,
-): Promise<void> {
+async function goToStatementsAndDocuments(helper: PuppeteerHelper): Promise<void> {
   await helper.clickButtonWithSelector("div.uf-trigger-icon");
   await helper.clickElementWithText({
     selector: "tduf-top-nav-menu-option",
@@ -62,13 +89,13 @@ async function openSelectAccountListBox(helper: PuppeteerHelper): Promise<void> 
     selector: "span.mat-select-placeholder",
     text: "Select an Account",
     waitForVisible: true,
-  })
+  });
 }
 
-async function getAccountNames(
-  helper: PuppeteerHelper,
-): Promise<string[]> {
-  const elements = await helper.getElementsAndTextContentMatchingSelector(".tduf-dropdown-chip-option-detail-primary");
+async function getAccountNames(helper: PuppeteerHelper): Promise<string[]> {
+  const elements = await helper.getElementsAndTextContentMatchingSelector(
+    ".tduf-dropdown-chip-option-detail-primary",
+  );
   const accountNames: string[] = [];
   for (const elementInfo of elements) {
     accountNames.push(elementInfo.textContent.trim());
