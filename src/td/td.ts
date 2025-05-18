@@ -5,6 +5,32 @@ export async function run(
   username: string,
   encryptedPasswordFile: string,
 ): Promise<void> {
+  const logger = helper.logger;
+  await login(helper, username, encryptedPasswordFile);
+  await goToStatementsAndDocuments(helper);
+  await openSelectAccountListBox(helper);
+
+  const accountNames = await getAccountNames(helper);
+  logger.info(`Found ${accountNames.length} accounts:`);
+  accountNames.forEach((accountName, index) => logger.info(`  Account #${index+1}: "${accountName}"`));
+
+  let accountNameIndex = 0;
+  while (accountNameIndex < accountNames.length) {
+    const accountName = accountNames[accountNameIndex]!;
+    logger.info(`Downloading statements for account: ${accountName}`);
+    accountNameIndex++;
+    if (accountNameIndex > 0) {
+      await helper.clickElementWithText({selector: ".tduf-dropdown-chip-option-detail-primary", text: accountNames[accountNameIndex-1]!, waitForVisible:true, waitForNetworkIdle: true});
+    }
+    await helper.clickElementWithText({selector: ".tduf-dropdown-chip-option-detail-primary", text: accountName, waitForVisible:true, waitForNetworkIdle: true});
+  }
+}
+
+async function login(
+  helper: PuppeteerHelper,
+  username: string,
+  encryptedPasswordFile: string,
+): Promise<void> {
   await helper.gotoUrl("https://easyweb.td.com/");
   helper.clickWhenAndIfVisibleBySelectorAsync({
     selector: "button.onetrust-close-btn-handler",
@@ -17,6 +43,11 @@ export async function run(
     file: encryptedPasswordFile,
   });
   await helper.clickButtonWithText("login", { waitForNavigation: true });
+}
+
+async function goToStatementsAndDocuments(
+  helper: PuppeteerHelper,
+): Promise<void> {
   await helper.clickButtonWithSelector("div.uf-trigger-icon");
   await helper.clickElementWithText({
     selector: "tduf-top-nav-menu-option",
@@ -24,9 +55,23 @@ export async function run(
     waitForNavigation: true,
     waitForVisible: true,
   });
+}
+
+async function openSelectAccountListBox(helper: PuppeteerHelper): Promise<void> {
   await helper.clickElementWithText({
     selector: "span.mat-select-placeholder",
     text: "Select an Account",
     waitForVisible: true,
   })
+}
+
+async function getAccountNames(
+  helper: PuppeteerHelper,
+): Promise<string[]> {
+  const elements = await helper.getElementsAndTextContentMatchingSelector(".tduf-dropdown-chip-option-detail-primary");
+  const accountNames: string[] = [];
+  for (const elementInfo of elements) {
+    accountNames.push(elementInfo.textContent.trim());
+  }
+  return accountNames;
 }

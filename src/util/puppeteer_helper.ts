@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { Browser, Page } from "puppeteer";
+import type { Browser, ElementHandle, Page } from "puppeteer";
 
 import { getTextContent } from "./browser/evaluate_functions.ts";
 import { elementBySelectorAndTextContent } from "./browser/wait_for_functions.ts";
@@ -7,13 +7,13 @@ import type { Logger } from "./logging.ts";
 import { decrypt } from "./crypto.ts";
 
 export class PuppeteerHelper {
-  readonly #logger: Logger;
-  readonly #abortController = new AbortController();
+  readonly logger: Logger;
+  readonly abortController: AbortController = new AbortController();
 
   #state: State = new NewState();
 
   constructor(logger: Logger) {
-    this.#logger = logger;
+    this.logger = logger;
   }
 
   async start(browser: Browser): Promise<void> {
@@ -33,15 +33,15 @@ export class PuppeteerHelper {
   }
 
   #transitionToClosed(): ClosedState {
-    this.#abortController.abort("closed");
+    this.abortController.abort("closed");
 
     if (this.#state.name === "new") {
       return new ClosedState(null);
     } else if (this.#state.name === "starting") {
-      const promise = closePromisedPage(this.#state.promise, this.#logger);
+      const promise = closePromisedPage(this.#state.promise, this.logger);
       return new ClosedState(promise);
     } else if (this.#state.name === "started") {
-      const promise = closePage(this.#state.page, this.#logger);
+      const promise = closePage(this.#state.page, this.logger);
       return new ClosedState(promise);
     } else if (this.#state.name === "closed") {
       return this.#state;
@@ -61,25 +61,25 @@ export class PuppeteerHelper {
   }
 
   async gotoUrl(url: string): Promise<void> {
-    this.#logger.info(`Navigating browser to URL: ${url}`);
+    this.logger.info(`Navigating browser to URL: ${url}`);
     await this.#page.goto(url, { timeout: 0, waitUntil: ["load", "networkidle0"] });
   }
 
   clickWhenAndIfVisibleBySelectorAsync(args: { selector: string; description: string }): void {
     const { selector, description } = args;
-    this.#logger.info(`Waiting for element "${description ?? selector}" to become visible`);
+    this.logger.info(`Waiting for element "${description ?? selector}" to become visible`);
 
     const asyncFunction = async () => {
       const elementHandle = await this.#page.waitForSelector(selector, {
         timeout: 0,
-        signal: this.#abortController.signal,
+        signal: this.abortController.signal,
         visible: true,
       });
-      this.#logger.info(`Clicking element "${description ?? selector}"`);
+      this.logger.info(`Clicking element "${description ?? selector}"`);
       await elementHandle!.click();
     };
     asyncFunction().catch(error => {
-      this.#logger.warn(
+      this.logger.warn(
         `Waiting for or clicking element "${description ?? selector}" FAILED:`,
         error,
       );
@@ -87,15 +87,15 @@ export class PuppeteerHelper {
   }
 
   async waitForElementWithIdToBeVisible(elementId: string): Promise<void> {
-    this.#logger.info(`Waiting for element with ID "${elementId}" to become visible`);
+    this.logger.info(`Waiting for element with ID "${elementId}" to become visible`);
     const selector = selectorForElementWithId(elementId);
     await this.#page.waitForSelector(selector, { visible: true, timeout: 0 });
-    this.#logger.info(`Element with ID "${elementId}" is now visible; continuing.`);
+    this.logger.info(`Element with ID "${elementId}" is now visible; continuing.`);
   }
 
   async typeTextIntoElementWithId(args: { elementId: string; text: string }): Promise<void> {
     const { elementId, text } = args;
-    this.#logger.info(`Typing text "${text}" into element with ID "${elementId}"`);
+    this.logger.info(`Typing text "${text}" into element with ID "${elementId}"`);
     const selector = selectorForElementWithId(elementId);
     const element = await this.#page.$(selector);
     if (!element) {
@@ -113,9 +113,9 @@ export class PuppeteerHelper {
     file: string;
   }): Promise<void> {
     const { elementId, file } = args;
-    this.#logger.info(`Decrypting password from file: ${file}`);
+    this.logger.info(`Decrypting password from file: ${file}`);
     const decryptedPassword = decrypt(await fs.readFile(file, { encoding: "utf8" }));
-    this.#logger.info(`Typing password into element with ID "${elementId}"`);
+    this.logger.info(`Typing password into element with ID "${elementId}"`);
     const selector = selectorForElementWithId(elementId);
     const element = await this.#page.$(selector);
     if (!element) {
@@ -138,17 +138,19 @@ export class PuppeteerHelper {
     selector: string;
     text: string;
     waitForNavigation?: boolean;
+    waitForNetworkIdle?: boolean;
     waitForVisible?: boolean;
   }): Promise<void> {
     const { selector, text } = args;
     const waitForVisible = args.waitForVisible ?? false;
     const waitForNavigation = args.waitForNavigation ?? false;
+    const waitForNetworkIdle = args.waitForNetworkIdle ?? false;
 
     if (waitForVisible) {
       await this.waitForElement({ selector, text });
     }
 
-    this.#logger.info(`Clicking element matching selector "${selector}" ` +
+    this.logger.info(`Clicking element matching selector "${selector}" ` +
       `and text content: "${text}"`);
     const elements = await this.#page.$$(selector);
     const matchingElements: Array<(typeof elements)[number]> = [];
@@ -174,19 +176,19 @@ export class PuppeteerHelper {
     }
 
     const matchingElement = matchingElements[0]!;
-    if (!waitForNavigation) {
-      await matchingElement.click();
-    } else {
-      await Promise.all([
-        this.#page.waitForNavigation({ timeout: 0, waitUntil: ["load", "networkidle0"] }),
-        this.#page.waitForNetworkIdle({ timeout: 0, idleTime: 500 }),
-        matchingElement.click(),
-      ]);
+    const promises: Promise<unknown>[] = [];
+    if (waitForNavigation) {
+      promises.push(this.#page.waitForNavigation({ timeout: 0, waitUntil: ["load", "networkidle0"] }));
     }
+    if (waitForNetworkIdle) {
+      promises.push(this.#page.waitForNetworkIdle({timeout: 0}));
+    }
+    promises.push(matchingElement.click());
+    await Promise.all(promises);
   }
 
   async clickButtonWithSelector(selector: string): Promise<void> {
-    this.#logger.info(`Clicking button matching selector: "${selector}"`);
+    this.logger.info(`Clicking button matching selector: "${selector}"`);
     const elements = await this.#page.$$(selector);
     const matchingElements: Array<(typeof elements)[number]> = [];
     for (const element of elements) {
@@ -208,7 +210,7 @@ export class PuppeteerHelper {
 
   async waitForElement(args: { selector: string; text: string }): Promise<void> {
     const { selector, text } = args;
-    this.#logger.info(`Waiting for element matching selector "${selector}" ` +
+    this.logger.info(`Waiting for element matching selector "${selector}" ` +
     `with text content: "${text}"`);
     await this.#page.waitForFunction(
       elementBySelectorAndTextContent,
@@ -216,6 +218,16 @@ export class PuppeteerHelper {
       selector,
       text,
     );
+  }
+
+  async getElementsAndTextContentMatchingSelector(selector: string): Promise<Array<{element: ElementHandle, textContent: string}>> {
+    const elements = await this.#page.$$(selector);
+    const result: Array<{element: ElementHandle, textContent: string}> = [];
+    for (const element of elements) {
+      const textContent = await element.evaluate(getTextContent);
+      result.push({element, textContent: textContent ?? ""});
+    }
+    return result;
   }
 }
 
