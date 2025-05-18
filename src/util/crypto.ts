@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 
-const key = '1ErDLz9W8fJCQ+gGiKICBPBfy5TkBL9Dx84nAF6Hkvc=' as const;
-const iv = '/PqhiCThqD3Lli1g6ceVqw==' as const;
-const cipherType = 'aes-256-gcm' as const;
+const key = "1ErDLz9W8fJCQ+gGiKICBPBfy5TkBL9Dx84nAF6Hkvc=" as const;
+const iv = "/PqhiCThqD3Lli1g6ceVqw==" as const;
+const cipherType = "aes-256-gcm" as const;
 
 interface EncryptedData {
   cipherText: string;
@@ -21,7 +21,9 @@ export function encrypt(text: string): string {
 }
 
 export function decrypt(encryptedText: string): string {
-  const encryptedData: EncryptedData = JSON.parse(new TextDecoder().decode(Buffer.from(encryptedText, "base64")));
+  const encryptedData: EncryptedData = JSON.parse(
+    new TextDecoder().decode(Buffer.from(encryptedText, "base64")),
+  );
   const { cipherText, authTag } = encryptedData;
   const decipher = crypto.createDecipheriv(cipherType, fromBase64(key), fromBase64(iv));
   decipher.setAuthTag(Buffer.from(authTag, "base64"));

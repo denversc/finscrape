@@ -1,7 +1,10 @@
+import fs from "node:fs/promises";
 import type { Browser, Page } from "puppeteer";
 
 import { getTextContent } from "./browser/evaluate_functions.ts";
+import { elementBySelectorAndTextContent } from "./browser/wait_for_functions.ts";
 import type { Logger } from "./logging.ts";
+import { decrypt } from "./crypto.ts";
 
 export class PuppeteerHelper {
   readonly #logger: Logger;
@@ -102,12 +105,51 @@ export class PuppeteerHelper {
       );
     }
     const inputElement = await element.toElement("input");
-    await inputElement.type(text);
+    await element.type(text);
   }
 
-  async clickButtonWithText(buttonText: string): Promise<void> {
-    this.#logger.info(`Clicking button with text: "${buttonText}"`);
-    const elements = await this.#page.$$("button");
+  async typeTextDecryptedFromFileIntoElementWithId(args: {
+    elementId: string;
+    file: string;
+  }): Promise<void> {
+    const { elementId, file } = args;
+    this.#logger.info(`Decrypting password from file: ${file}`);
+    const decryptedPassword = decrypt(await fs.readFile(file, { encoding: "utf8" }));
+    this.#logger.info(`Typing password into element with ID "${elementId}"`);
+    const selector = selectorForElementWithId(elementId);
+    const element = await this.#page.$(selector);
+    if (!element) {
+      throw new Error(
+        `Typing text password into element with ID "${elementId}" FAILED: ` +
+          "element not found [nfhgj9rc2t]",
+      );
+    }
+    await element.type(decryptedPassword);
+  }
+
+  async clickButtonWithText(
+    buttonText: string,
+    options?: { waitForNavigation?: boolean; waitForVisible?: boolean },
+  ): Promise<void> {
+    await this.clickElementWithText({ ...options, tagName: "button", text: buttonText });
+  }
+
+  async clickElementWithText(args: {
+    tagName: string;
+    text: string;
+    waitForNavigation?: boolean;
+    waitForVisible?: boolean;
+  }): Promise<void> {
+    const { tagName, text } = args;
+    const waitForVisible = args.waitForVisible ?? false;
+    const waitForNavigation = args.waitForNavigation ?? false;
+
+    if (waitForVisible) {
+      await this.waitForElement({ tagName, text });
+    }
+
+    this.#logger.info(`Clicking element with tag "${tagName} and text: "${text}"`);
+    const elements = await this.#page.$$(tagName);
     const matchingElements: Array<(typeof elements)[number]> = [];
     for (const element of elements) {
       if (!(await element.isVisible())) {
@@ -117,18 +159,60 @@ export class PuppeteerHelper {
       if (typeof textContent !== "string") {
         continue;
       }
-      if (textContent.trim().toLowerCase() === buttonText.trim().toLowerCase()) {
+      if (textContent.trim().toLowerCase() === text.trim().toLowerCase()) {
         matchingElements.push(element);
       }
     }
     if (matchingElements.length !== 1) {
       throw new Error(
-        `Clicking button with text: "${buttonText}" FAILED: ` +
-          `expected to find exactly 1 button with this text, but found ${matchingElements.length} ` +
-          "[fzt64ga7nw]",
+        `Clicking element with tag "${tagName} and text: "${text}" FAILED: ` +
+          `expected to find exactly 1 matching element, ` +
+          `but found ${matchingElements.length} [fzt64ga7nw]`,
       );
     }
-    await matchingElements[0]!.click();
+
+    const matchingElement = matchingElements[0]!;
+    if (!waitForNavigation) {
+      await matchingElement.click();
+    } else {
+      await Promise.all([
+        this.#page.waitForNavigation({ timeout: 0, waitUntil: ["load", "networkidle0"] }),
+        this.#page.waitForNetworkIdle({ timeout: 0, idleTime: 500 }),
+        matchingElement.click(),
+      ]);
+    }
+  }
+
+  async clickButtonWithSelector(selector: string): Promise<void> {
+    this.#logger.info(`Clicking button matching selector: "${selector}"`);
+    const elements = await this.#page.$$(selector);
+    const matchingElements: Array<(typeof elements)[number]> = [];
+    for (const element of elements) {
+      if (await element.isVisible()) {
+        matchingElements.push(element);
+      }
+    }
+    if (matchingElements.length !== 1) {
+      throw new Error(
+        `Clicking button with selector: "${selector}" FAILED: ` +
+          `expected to find exactly 1 button with this selector, ` +
+          `but found ${matchingElements.length} [bshx3gf9mp]`,
+      );
+    }
+
+    const button = matchingElements[0]!;
+    await button.click();
+  }
+
+  async waitForElement(args: { tagName: string; text: string }): Promise<void> {
+    const { tagName, text } = args;
+    this.#logger.info(`Waiting for element with tag "${tagName} and text: "${text}"`);
+    await this.#page.waitForFunction(
+      elementBySelectorAndTextContent,
+      { timeout: 0 },
+      tagName,
+      text,
+    );
   }
 }
 

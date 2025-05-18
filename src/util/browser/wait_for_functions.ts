@@ -6,7 +6,7 @@ export function elementBySelectorAndTextContent(
   for (const element of elements) {
     if (
       typeof element.textContent === "string" &&
-      element.textContent.trim() === expectedTextContent
+      element.textContent.toLowerCase().trim() === expectedTextContent.toLowerCase().trim()
     ) {
       return element;
     }
