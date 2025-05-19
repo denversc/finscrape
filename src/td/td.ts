@@ -22,7 +22,7 @@ export async function run(
     const accountName = accountNames[accountNameIndex]!;
     logger.info(`Downloading statements for account: ${accountName}`);
     accountNameIndex++;
-    if (accountNameIndex > 0) {
+    if (accountNameIndex > 1) {
       await helper.clickElementWithText({
         selector: ".tduf-dropdown-chip-option-detail-primary",
         text: accountNames[accountNameIndex - 1]!,
@@ -48,6 +48,10 @@ export async function run(
       logger.info(`Downloading statement for date: ${date}`);
       await row.scrollIntoView();
       await row.click();
+
+      const downloadButtonSelector = `button[aria-label="Download"]`;
+      await helper.page.waitForSelector(downloadButtonSelector, { timeout: 0, visible: true });
+      await helper.page.click(downloadButtonSelector);
       break;
     }
 
