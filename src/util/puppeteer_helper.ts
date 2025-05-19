@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 
 import type { Browser, ElementHandle, Page } from "puppeteer";
 
@@ -26,6 +27,21 @@ export class PuppeteerHelper {
     const page = await newPagePromise;
     this.#state = new StartedState(page);
     await page.setViewport(null);
+
+    const cdpSession = await page.createCDPSession();
+    await cdpSession.send("Browser.setDownloadBehavior", {
+      behavior: "allow",
+      eventsEnabled: true,
+      downloadPath: path.join(import.meta.dirname, "..", ".."),
+    });
+    cdpSession.on("Browser.downloadWillBegin", event => {
+      this.logger.info(`Downloading "${event.url}" to local file: "${event.suggestedFilename}"`);
+    });
+    cdpSession.on("Browser.downloadProgress", event => {
+      if (event.state === "completed") {
+        this.logger.info("Download completed");
+      }
+    });
   }
 
   close(): Promise<void> {

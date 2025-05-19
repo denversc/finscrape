@@ -51,6 +51,7 @@ export async function run(
 
       const downloadButtonSelector = `button[aria-label="Download"]`;
       await helper.page.waitForSelector(downloadButtonSelector, { timeout: 0, visible: true });
+      await new Promise(resolve => setTimeout(resolve, 500));
       await helper.page.click(downloadButtonSelector);
       break;
     }
