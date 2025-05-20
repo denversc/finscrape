@@ -21,6 +21,9 @@
     "trailingComma": "all"
   },
   "dependencies": {
+    "@electron/remote": "^2.1.2",
+    "electron": "^36.2.1",
+    "electron-prompt": "^1.7.0",
     "fs-extra": "^11.3.0",
     "puppeteer": "^24.8.2",
     "read": "^4.1.0",
@@ -31,6 +34,7 @@
     "@eslint/js": "^9.23.0",
     "@tsconfig/node24": "^24.0.0",
     "@types/chai": "^5.2.2",
+    "@types/electron-prompt": "^1.6.5",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.15.18",
     "@types/signale": "^1.4.7",

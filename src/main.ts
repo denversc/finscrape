@@ -4,6 +4,7 @@ import { hideBin } from "yargs/helpers";
 
 import * as td from "./td/td.ts";
 import { AppData } from "./util/app_data.ts";
+import { ElectronPromptUserAsker,ReadlineUserAsker } from "./util/ask_user.ts";
 import { getLogger } from "./util/logging.ts";
 import { PuppeteerHelper } from "./util/puppeteer_helper.ts";
 
@@ -20,28 +21,33 @@ const yargsResult = await yargs(hideBin(process.argv))
     description:
       "Leave the browser opened instead of closing it at the end " + "(useful for debugging)",
   })
+  .option("gui", {
+    boolean: true,
+    description: "Prompt for user information using a GUI instead of the console.",
+  })
   .showHelpOnFail(true)
   .strict()
   .parse();
 
-const { appDataFile, leaveBrowserOpen } = yargsResult;
+const { appDataFile, leaveBrowserOpen, gui: useElectronUserAsker } = yargsResult;
 
 const logger = getLogger();
 const browser = await puppeteer.launch({ headless: false });
-const appData = new AppData(appDataFile);
+const userAsker = useElectronUserAsker ? new ElectronPromptUserAsker() : new ReadlineUserAsker();
+const appData = new AppData(appDataFile, userAsker);
 const puppeteerHelper = new PuppeteerHelper(logger);
 await puppeteerHelper.start(browser);
 
 appData.open();
 try {
   if (leaveBrowserOpen) {
-    td.run(puppeteerHelper, appData)
+    td.run(puppeteerHelper, appData, userAsker)
       .catch(error => console.error(error))
       .finally(() => {
         logger.info("Not closing browser, by request");
       });
   } else {
-    await td.run(puppeteerHelper, appData);
+    await td.run(puppeteerHelper, appData, userAsker);
     await browser.close();
     await puppeteerHelper.close();
   }

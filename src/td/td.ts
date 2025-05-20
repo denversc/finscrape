@@ -1,12 +1,15 @@
-import { read as getUserInput } from "read";
-
 import { type AppData } from "../util/app_data.ts";
+import { type UserAsker } from "../util/ask_user.ts";
 import { getTextContent } from "../util/browser/evaluate_functions.ts";
 import { type PuppeteerHelper } from "../util/puppeteer_helper.ts";
 
-export async function run(helper: PuppeteerHelper, appData: AppData): Promise<void> {
+export async function run(
+  helper: PuppeteerHelper,
+  appData: AppData,
+  userAsker: UserAsker,
+): Promise<void> {
   const logger = helper.logger;
-  await login(helper, appData);
+  await login(helper, appData, userAsker);
   await goToStatementsAndDocuments(helper);
   await openSelectAccountListBox(helper);
 
@@ -64,23 +67,24 @@ interface LoginCredentials {
   password: string;
 }
 
-async function getLoginCredentials(appData: AppData): Promise<LoginCredentials> {
+async function getLoginCredentials(
+  appData: AppData,
+  userAsker: UserAsker,
+): Promise<LoginCredentials> {
   const credentialsList = appData.getCredentialsForDomain("td");
   if (credentialsList.length > 0) {
     return credentialsList[0] as LoginCredentials;
   }
 
-  const inputtedUsername = await getUserInput({
-    input: process.stdin,
-    output: process.stdout,
+  const inputtedUsername = await userAsker.ask({
+    title: "TD Username",
     prompt: "Enter username for TD:",
   });
 
-  const inputtedPassword = await getUserInput({
-    input: process.stdin,
-    output: process.stdout,
+  const inputtedPassword = await userAsker.ask({
+    title: "TD Password",
     prompt: "Enter password for TD:",
-    silent: true,
+    sensitive: true,
   });
 
   const credentials = {
@@ -92,14 +96,18 @@ async function getLoginCredentials(appData: AppData): Promise<LoginCredentials> 
   return credentials;
 }
 
-async function login(helper: PuppeteerHelper, appData: AppData): Promise<void> {
+async function login(
+  helper: PuppeteerHelper,
+  appData: AppData,
+  userAsker: UserAsker,
+): Promise<void> {
   await helper.gotoUrl("https://easyweb.td.com/");
   helper.clickWhenAndIfVisibleBySelectorAsync({
     selector: "button.onetrust-close-btn-handler",
     description: `cookie preferences dialog "dismiss" button`,
   });
 
-  const { username, password } = await getLoginCredentials(appData);
+  const { username, password } = await getLoginCredentials(appData, userAsker);
 
   await helper.waitForElementWithIdToBeVisible("username");
   await helper.typeTextIntoElementWithId({ elementId: "username", text: username });

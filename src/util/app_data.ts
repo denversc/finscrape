@@ -1,13 +1,17 @@
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
+import { type UserAsker } from "./ask_user.ts";
+
 export class AppData {
   readonly file: string;
+  readonly userAsker: UserAsker;
   #state: State = new NewState();
   #memoizedEncryptionKey: Uint8Array | undefined = undefined;
 
-  constructor(file: string) {
+  constructor(file: string, userAsker: UserAsker) {
     this.file = file;
+    this.userAsker = userAsker;
   }
 
   get #db(): DatabaseSync {
@@ -31,11 +35,15 @@ export class AppData {
     return Buffer.from(saltBase64, "base64");
   }
 
-  get #encryptionKey(): Uint8Array {
+  async #getEncryptionKey(): Promise<Uint8Array> {
     if (typeof this.#memoizedEncryptionKey !== "undefined") {
       return this.#memoizedEncryptionKey;
     }
-    const password = "abc123";
+    const password = await this.userAsker.ask({
+      title: "Application Database Password",
+      prompt: "Enter the application database password:",
+      sensitive: true,
+    });
     const passwordBytes = new TextEncoder().encode(password);
     const iterations = 10000;
     const keyLength = 32;
@@ -68,13 +76,13 @@ export class AppData {
     this.#state = new OpenedState(db);
   }
 
-  insertCredentialsForDomain(domain: string, credentials: unknown): void {
+  async insertCredentialsForDomain(domain: string, credentials: unknown): Promise<void> {
     const statement = this.#db.prepare(`INSERT INTO credentials (domain, data) VALUES (?, ?)`);
-    const encryptedCredentials = this.#encrypt(credentials);
+    const encryptedCredentials = await this.#encrypt(credentials);
     statement.run(domain, encryptedCredentials);
   }
 
-  getCredentialsForDomain(domain: string): unknown[] {
+  async getCredentialsForDomain(domain: string): Promise<unknown[]> {
     const queryResults = this.#db
       .prepare(`SELECT data FROM credentials WHERE domain = ?`)
       .all(domain);
@@ -82,7 +90,7 @@ export class AppData {
     for (const queryResult of queryResults) {
       const data = queryResult["data"]?.valueOf();
       if (typeof data === "string") {
-        const decryptedData = this.#decrypt(data);
+        const decryptedData = await this.#decrypt(data);
         parsedResults.push(decryptedData);
       }
     }
@@ -97,11 +105,12 @@ export class AppData {
     }
   }
 
-  #encrypt(data: unknown): string {
+  async #encrypt(data: unknown): Promise<string> {
     const iv = Buffer.from(generateRandomInitializationVector());
     const dataBytes = new TextEncoder().encode(JSON.stringify(data));
+    const encryptionKey = await this.#getEncryptionKey();
 
-    const cipher = crypto.createCipheriv("aes-256-gcm", this.#encryptionKey, iv);
+    const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey, iv);
     const cipherText1: string = cipher.update(dataBytes, undefined, "base64");
     const cipherText2: string = cipher.final("base64");
     const cipherText: string = cipherText1 + cipherText2;
@@ -114,14 +123,15 @@ export class AppData {
     return Buffer.from(new TextEncoder().encode(JSON.stringify(encryptedBlob))).toString("base64");
   }
 
-  #decrypt(data: string): unknown {
+  async #decrypt(data: string): Promise<unknown> {
     const { cipherTextBase64, authTagBase64, initializationVectorBase64 } = JSON.parse(
       new TextDecoder().decode(Buffer.from(data, "base64")),
     ) as EncryptedBlob;
     const authTag = Buffer.from(authTagBase64, "base64");
     const iv = Buffer.from(initializationVectorBase64, "base64");
+    const encryptionKey = await this.#getEncryptionKey();
 
-    const decipher = crypto.createDecipheriv("aes-256-gcm", this.#encryptionKey, iv);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", encryptionKey, iv);
     decipher.setAuthTag(authTag);
     const plainText1 = decipher.update(cipherTextBase64, "base64");
     const plainText2 = decipher.final();

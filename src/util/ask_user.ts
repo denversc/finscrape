@@ -1,0 +1,56 @@
+import electronPrompt from "electron-prompt";
+import { read as getUserInput } from "read";
+
+export interface UserAsker {
+  ask(options?: Partial<AskOptions>): Promise<string>;
+}
+
+export interface AskOptions {
+  prompt: string;
+  title: string;
+  sensitive: boolean;
+}
+
+export function resolveOptions(options?: Partial<AskOptions>): AskOptions {
+  return {
+    prompt: options?.prompt ?? "Please enter some text:",
+    title: options?.title ?? "user input",
+    sensitive: options?.sensitive ?? false,
+  };
+}
+
+export function validateUserInput(userInput: unknown, options: AskOptions): string {
+  if (typeof userInput === "string") {
+    const trimmedUserInput = userInput.trim();
+    if (trimmedUserInput.length > 0) {
+      return trimmedUserInput;
+    }
+  }
+  throw new Error(`No input given for: ${options.title} [yvf9gf9hrh]`);
+}
+
+export class ReadlineUserAsker implements UserAsker {
+  async ask(options?: Partial<AskOptions>): Promise<string> {
+    const resolvedOptions = resolveOptions(options);
+    const { prompt, sensitive: silent } = resolvedOptions;
+    const userInput = await getUserInput({
+      input: process.stdin,
+      output: process.stdout,
+      prompt,
+      silent,
+    });
+    return validateUserInput(userInput, resolvedOptions);
+  }
+}
+
+export class ElectronPromptUserAsker implements UserAsker {
+  async ask(options?: Partial<AskOptions>): Promise<string> {
+    const resolvedOptions = resolveOptions(options);
+    const { prompt: label } = resolvedOptions;
+    const userInput = await electronPrompt({
+      label,
+      type: "input",
+    });
+    return validateUserInput(userInput, resolvedOptions);
+  }
+}
