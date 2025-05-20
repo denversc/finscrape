@@ -1,12 +1,13 @@
 // @ts-check
 
 import eslint from "@eslint/js";
-import simpleImportSort from "eslint-plugin-simple-import-sort";
-import typescriptEslint from "typescript-eslint";
+import chaiFriendlyPlugin from "eslint-plugin-chai-friendly";
+import simpleImportSortPlugin from "eslint-plugin-simple-import-sort";
+import tseslint from "typescript-eslint";
 
-export default typescriptEslint.config(
+export default tseslint.config(
   eslint.configs.recommended,
-  ...typescriptEslint.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     "ignores": ["build/**/*"],
   },
@@ -28,11 +29,14 @@ export default typescriptEslint.config(
   },
   {
     plugins: {
-      "simple-import-sort": simpleImportSort,
+      "simple-import-sort": simpleImportSortPlugin,
+      "chai-friendly": chaiFriendlyPlugin,
     },
     rules: {
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
+      "@typescript-eslint/no-unused-expressions": "off", // use chai-friendly/no-unused-expressions instead
+      "chai-friendly/no-unused-expressions": "error",
     },
   },
 );

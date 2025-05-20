@@ -5,6 +5,8 @@
     { "path": "./src" },
     { "path": "./src/td" },
     { "path": "./src/util" },
-    { "path": "./src/util/browser" }
+    { "path": "./src/util/browser" },
+    { "path": "./test" },
+    { "path": "./test/util" }
   ]
 }

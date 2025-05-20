@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base",
+  "compilerOptions": {
+    "types": ["chai", "mocha", "node"]
+  },
+
+  "references": [{ "path": ".." }, { "path": "../../src/util" }],
+
+  "include": ["**/*"]
+}
