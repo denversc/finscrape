@@ -1,8 +1,10 @@
+import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 export class AppData {
   readonly file: string;
   #state: State = new NewState();
+  #memoizedEncryptionKey: Uint8Array | undefined = undefined;
 
   constructor(file: string) {
     this.file = file;
@@ -17,6 +19,29 @@ export class AppData {
       );
     }
     return this.#state.db;
+  }
+
+  get #salt(): Uint8Array {
+    const key = "salt";
+    const result = this.#db.prepare("SELECT value FROM settings WHERE key=?").get(key);
+    const saltBase64 = result?.["value"]?.valueOf();
+    if (typeof saltBase64 !== "string") {
+      throw new Error(`invalid "salt" loaded from database: ${saltBase64} [tq8yxth6j4]`);
+    }
+    return Buffer.from(saltBase64, "base64");
+  }
+
+  get #encryptionKey(): Uint8Array {
+    if (typeof this.#memoizedEncryptionKey !== "undefined") {
+      return this.#memoizedEncryptionKey;
+    }
+    const password = "abc123";
+    const passwordBytes = new TextEncoder().encode(password);
+    const iterations = 10000;
+    const keyLength = 32;
+    const key = crypto.pbkdf2Sync(passwordBytes, this.#salt, iterations, keyLength, "sha512");
+    this.#memoizedEncryptionKey = key;
+    return key;
   }
 
   open(): void {
@@ -45,24 +70,20 @@ export class AppData {
 
   insertCredentialsForDomain(domain: string, credentials: unknown): void {
     const statement = this.#db.prepare(`INSERT INTO credentials (domain, data) VALUES (?, ?)`);
-    statement.run(`${domain}`, JSON.stringify(credentials));
+    const encryptedCredentials = this.#encrypt(credentials);
+    statement.run(domain, encryptedCredentials);
   }
 
   getCredentialsForDomain(domain: string): unknown[] {
     const queryResults = this.#db
       .prepare(`SELECT data FROM credentials WHERE domain = ?`)
-      .all(`${domain}`);
+      .all(domain);
     const parsedResults: unknown[] = [];
     for (const queryResult of queryResults) {
       const data = queryResult["data"]?.valueOf();
       if (typeof data === "string") {
-        let parsedData: unknown;
-        try {
-          parsedData = JSON.parse(data);
-        } catch (_) {
-          continue;
-        }
-        parsedResults.push(parsedData);
+        const decryptedData = this.#decrypt(data);
+        parsedResults.push(decryptedData);
       }
     }
     return parsedResults;
@@ -75,6 +96,45 @@ export class AppData {
       oldState.db.close();
     }
   }
+
+  #encrypt(data: unknown): string {
+    const iv = Buffer.from(generateRandomInitializationVector());
+    const dataBytes = new TextEncoder().encode(JSON.stringify(data));
+
+    const cipher = crypto.createCipheriv("aes-256-gcm", this.#encryptionKey, iv);
+    const cipherText1: string = cipher.update(dataBytes, undefined, "base64");
+    const cipherText2: string = cipher.final("base64");
+    const cipherText: string = cipherText1 + cipherText2;
+
+    const encryptedBlob = {
+      cipherTextBase64: cipherText,
+      authTagBase64: cipher.getAuthTag().toString("base64"),
+      initializationVectorBase64: iv.toString("base64"),
+    } satisfies EncryptedBlob;
+    return Buffer.from(new TextEncoder().encode(JSON.stringify(encryptedBlob))).toString("base64");
+  }
+
+  #decrypt(data: string): unknown {
+    const { cipherTextBase64, authTagBase64, initializationVectorBase64 } = JSON.parse(
+      new TextDecoder().decode(Buffer.from(data, "base64")),
+    ) as EncryptedBlob;
+    const authTag = Buffer.from(authTagBase64, "base64");
+    const iv = Buffer.from(initializationVectorBase64, "base64");
+
+    const decipher = crypto.createDecipheriv("aes-256-gcm", this.#encryptionKey, iv);
+    decipher.setAuthTag(authTag);
+    const plainText1 = decipher.update(cipherTextBase64, "base64");
+    const plainText2 = decipher.final();
+    const plainText = Buffer.concat([plainText1, plainText2]);
+
+    return JSON.parse(new TextDecoder().decode(plainText));
+  }
+}
+
+interface EncryptedBlob {
+  cipherTextBase64: string;
+  authTagBase64: string;
+  initializationVectorBase64: string;
 }
 
 class NewState {
@@ -146,8 +206,28 @@ function createTables(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE credentials (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      domain TEXT,
+      domain TEXT NOT NULL,
       data TEXT
     )
   `);
+  db.exec(`
+    CREATE TABLE settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT UNIQUE NOT NULL,
+      value TEXT
+    )
+  `);
+
+  const salt = generateRandomSalt().toString("base64");
+  db.prepare("INSERT INTO settings (key, value) VALUES ('salt', ?)").run(salt);
+}
+
+function generateRandomSalt() {
+  // 16 bytes of salt is recommended, so double that!
+  return crypto.randomBytes(32);
+}
+
+function generateRandomInitializationVector() {
+  // 12 bytes is the recommended value for the "aes-256-gcm" cipher.
+  return crypto.randomBytes(12);
 }
