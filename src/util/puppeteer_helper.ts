@@ -1,11 +1,9 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { Browser, ElementHandle, Page } from "puppeteer";
 
 import { getTextContent } from "./browser/evaluate_functions.ts";
 import { elementBySelectorAndTextContent } from "./browser/wait_for_functions.ts";
-import { decrypt } from "./crypto.ts";
 import type { Logger } from "./logging.ts";
 
 export class PuppeteerHelper {
@@ -110,37 +108,20 @@ export class PuppeteerHelper {
     this.logger.info(`Element with ID "${elementId}" is now visible; continuing.`);
   }
 
-  async typeTextIntoElementWithId(args: { elementId: string; text: string }): Promise<void> {
+  async typeTextIntoElementWithId(args: TypeTextIntoElementArgs): Promise<void> {
     const { elementId, text } = args;
-    this.logger.info(`Typing text "${text}" into element with ID "${elementId}"`);
+    const sensitive = args.sensitive ?? false;
+    const sanitizedText = sensitive ? "<redacted>" : text;
+    this.logger.info(`Typing text "${sanitizedText}" into element with ID "${elementId}"`);
     const selector = selectorForElementWithId(elementId);
     const element = await this.page.$(selector);
     if (!element) {
       throw new Error(
-        `Typing text "${text}" into element with ID "${elementId}" FAILED: ` +
+        `Typing text "${sanitizedText}" into element with ID "${elementId}" FAILED: ` +
           "element not found [s5vg2hykg4]",
       );
     }
     await element.type(text);
-  }
-
-  async typeTextDecryptedFromFileIntoElementWithId(args: {
-    elementId: string;
-    file: string;
-  }): Promise<void> {
-    const { elementId, file } = args;
-    this.logger.info(`Decrypting password from file: ${file}`);
-    const decryptedPassword = decrypt(await fs.readFile(file, { encoding: "utf8" }));
-    this.logger.info(`Typing password into element with ID "${elementId}"`);
-    const selector = selectorForElementWithId(elementId);
-    const element = await this.page.$(selector);
-    if (!element) {
-      throw new Error(
-        `Typing text password into element with ID "${elementId}" FAILED: ` +
-          "element not found [nfhgj9rc2t]",
-      );
-    }
-    await element.type(decryptedPassword);
   }
 
   async clickButtonWithText(
@@ -321,3 +302,9 @@ class ClosedState extends BaseState<"closed"> {
 }
 
 type State = NewState | StartingState | StartedState | ClosedState;
+
+export interface TypeTextIntoElementArgs {
+  elementId: string;
+  text: string;
+  sensitive?: boolean;
+}

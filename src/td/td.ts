@@ -1,13 +1,12 @@
+import { read as getUserInput } from "read";
+
+import { type AppData } from "../util/app_data.ts";
 import { getTextContent } from "../util/browser/evaluate_functions.ts";
 import { type PuppeteerHelper } from "../util/puppeteer_helper.ts";
 
-export async function run(
-  helper: PuppeteerHelper,
-  username: string,
-  encryptedPasswordFile: string,
-): Promise<void> {
+export async function run(helper: PuppeteerHelper, appData: AppData): Promise<void> {
   const logger = helper.logger;
-  await login(helper, username, encryptedPasswordFile);
+  await login(helper, appData);
   await goToStatementsAndDocuments(helper);
   await openSelectAccountListBox(helper);
 
@@ -60,21 +59,54 @@ export async function run(
   }
 }
 
-async function login(
-  helper: PuppeteerHelper,
-  username: string,
-  encryptedPasswordFile: string,
-): Promise<void> {
+interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+async function getLoginCredentials(appData: AppData): Promise<LoginCredentials> {
+  const credentialsList = appData.getCredentialsForDomain("td");
+  if (credentialsList.length > 0) {
+    return credentialsList[0] as LoginCredentials;
+  }
+
+  const inputtedUsername = await getUserInput({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: "Enter username for TD:",
+  });
+
+  const inputtedPassword = await getUserInput({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: "Enter password for TD:",
+    silent: true,
+  });
+
+  const credentials = {
+    username: inputtedUsername.trim(),
+    password: inputtedPassword.trim(),
+  } satisfies LoginCredentials;
+
+  appData.insertCredentialsForDomain("td", credentials);
+  return credentials;
+}
+
+async function login(helper: PuppeteerHelper, appData: AppData): Promise<void> {
   await helper.gotoUrl("https://easyweb.td.com/");
   helper.clickWhenAndIfVisibleBySelectorAsync({
     selector: "button.onetrust-close-btn-handler",
     description: `cookie preferences dialog "dismiss" button`,
   });
+
+  const { username, password } = await getLoginCredentials(appData);
+
   await helper.waitForElementWithIdToBeVisible("username");
   await helper.typeTextIntoElementWithId({ elementId: "username", text: username });
-  await helper.typeTextDecryptedFromFileIntoElementWithId({
+  await helper.typeTextIntoElementWithId({
     elementId: "uapPassword",
-    file: encryptedPasswordFile,
+    text: password,
+    sensitive: true,
   });
   await helper.clickButtonWithText("login", { waitForNavigation: true });
 }

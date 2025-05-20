@@ -23,6 +23,7 @@
   "dependencies": {
     "fs-extra": "^11.3.0",
     "puppeteer": "^24.8.2",
+    "read": "^4.1.0",
     "signale": "^1.4.0",
     "yargs": "^17.7.2"
   },
