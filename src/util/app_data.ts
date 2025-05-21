@@ -113,13 +113,13 @@ function initializeDb(db: DatabaseSync): void {
 }
 
 function setupEncryption(db: DatabaseSync, encryptionPassword: string): Crypter {
-  const salt = getBinarySetting(db, "salt");
+  const salt = getBinarySetting(db, "password_salt");
   if (salt) {
     return Crypter.fromPasswordAndSalt(encryptionPassword, salt);
   }
 
   const { crypter, salt: newSalt } = Crypter.fromPassword(encryptionPassword);
-  setBinarySetting(db, "salt", newSalt);
+  setBinarySetting(db, "password_salt", newSalt);
   return crypter;
 }
 

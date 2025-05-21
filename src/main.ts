@@ -8,6 +8,7 @@ import * as td from "./td/td.ts";
 import { AppData } from "./util/app_data.ts";
 import { ReadlineUserAsker } from "./util/ask_user.ts";
 import { getLogger } from "./util/logging.ts";
+import { loadPasswordFromFile } from "./util/password_file.ts";
 import { PuppeteerHelper } from "./util/puppeteer_helper.ts";
 
 const yargsResult = await yargs(hideBin(process.argv))
@@ -18,6 +19,11 @@ const yargsResult = await yargs(hideBin(process.argv))
     demandOption: true,
     description: "The path of the file containing app information, like login credentials.",
   })
+  .option("app-data-password-file", {
+    alias: "p",
+    string: true,
+    description: "The path of a file whose contents to use as the password for the app data file.",
+  })
   .option("leave-browser-open", {
     boolean: true,
     description:
@@ -27,13 +33,16 @@ const yargsResult = await yargs(hideBin(process.argv))
   .strict()
   .parse();
 
-const { appDataFile, leaveBrowserOpen } = yargsResult;
+const { appDataFile, appDataPasswordFile, leaveBrowserOpen } = yargsResult;
 
 const logger = getLogger();
 const userAsker = new ReadlineUserAsker(logger);
 
 let password: string;
-if (fs.existsSync(appDataFile)) {
+if (appDataPasswordFile) {
+  logger.info(`Loading password from file: ${appDataPasswordFile}`);
+  password = await loadPasswordFromFile(appDataPasswordFile);
+} else if (fs.existsSync(appDataFile)) {
   password = await userAsker.ask({
     prompt: `Enter the password for the app data file "${appDataFile}":`,
     title: "Database Password",
