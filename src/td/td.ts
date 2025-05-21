@@ -71,7 +71,7 @@ async function getLoginCredentials(
   appData: AppData,
   userAsker: UserAsker,
 ): Promise<LoginCredentials> {
-  const credentialsList = appData.getCredentialsForDomain("td");
+  const credentialsList = await appData.getCredentialsForDomain("td");
   if (credentialsList.length > 0) {
     return credentialsList[0] as LoginCredentials;
   }

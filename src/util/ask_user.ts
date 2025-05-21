@@ -1,4 +1,3 @@
-import electronPrompt from "electron-prompt";
 import { read as getUserInput } from "read";
 
 export interface UserAsker {
@@ -38,18 +37,6 @@ export class ReadlineUserAsker implements UserAsker {
       output: process.stdout,
       prompt,
       silent,
-    });
-    return validateUserInput(userInput, resolvedOptions);
-  }
-}
-
-export class ElectronPromptUserAsker implements UserAsker {
-  async ask(options?: Partial<AskOptions>): Promise<string> {
-    const resolvedOptions = resolveOptions(options);
-    const { prompt: label } = resolvedOptions;
-    const userInput = await electronPrompt({
-      label,
-      type: "input",
     });
     return validateUserInput(userInput, resolvedOptions);
   }

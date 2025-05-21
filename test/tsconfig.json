@@ -4,7 +4,11 @@
     "types": ["node"]
   },
 
-  "references": [],
+  "references": [
+    {
+      "path": "../src/util"
+    }
+  ],
 
   "include": ["*"]
 }

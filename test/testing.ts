@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { expect } from "chai";
+import { type AskOptions, type UserAsker } from "../src/util/ask_user.ts";
 
 /**
  * Unconditionally returns `undefined`, even though doing so violates the return type.
@@ -17,7 +18,7 @@ export function undefinedValue<T>(): T {
 
 /**
  * Creates a new, empty directory in a location suitable for temporary files.
- * @param prefix a string to incorporate in the name of the temporary directory.
+ * @param tag a string to incorporate in the name of the temporary directory.
  * @return the path of the newly-created temporary directory.
  */
 export function createTempDir(tag: string): string {
@@ -30,4 +31,25 @@ export function expectThrowsContainingStringWithNonAbuttingText(
 ): void {
   const expr = new RegExp(`(^|\\W)${text}($|\\W)`);
   expect(func).to.throw(expr);
+}
+
+export class StubUserAsker implements UserAsker {
+  #responsesByPrompt = new Map<RegExp, string>();
+
+  registerPromptResponse(prompt: RegExp, response: string): void {
+    this.#responsesByPrompt.set(prompt, response);
+  }
+
+  async ask(options?: Partial<AskOptions>): Promise<string> {
+    const prompt = options?.prompt;
+    if (!prompt) {
+      throw new Error("don't know how to respond when no prompt is specified [ffrc8jsvgq]");
+    }
+    for (const [expr, response] of this.#responsesByPrompt) {
+      if (prompt.match(expr)) {
+        return response;
+      }
+    }
+    throw new Error(`no response for prompt: "${prompt}" [yfkdzjew8s]`);
+  }
 }
