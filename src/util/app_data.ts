@@ -1,40 +1,33 @@
-import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-import { type UserAsker } from "./ask_user.ts";
+import { base64StringFromUint8Array, uint8ArrayFromBase64String } from "./base64.ts";
+import { Crypter } from "./crypt.ts";
 
 export class AppData {
   readonly file: string;
-  readonly userAsker: UserAsker;
   #state: State = new NewState();
 
-  constructor(file: string, userAsker: UserAsker) {
+  constructor(file: string) {
     this.file = file;
-    this.userAsker = userAsker;
   }
 
-  get #db(): DatabaseSync {
-    if (!(this.#state instanceof OpenedState)) {
-      const openedStateName: string = new OpenedState(undefined as unknown as DatabaseSync).name;
-      throw new Error(
-        `the database is only available in the "${openedStateName}" state, ` +
-          `but the current state is: "${this.#state.name}"`,
-      );
+  #ensureOpenedState(): OpenedState {
+    if (this.#state instanceof OpenedState) {
+      return this.#state;
     }
-    return this.#state.db;
+
+    const openedStateName: string = new OpenedState(
+      undefined as unknown as DatabaseSync,
+      undefined as unknown as Crypter,
+    ).name;
+
+    throw new Error(
+      `AppData instance is expected to be in the "${openedStateName}" state, ` +
+        `but the current state is: "${this.#state.name}"`,
+    );
   }
 
-  get #salt(): Uint8Array {
-    const key = "salt";
-    const result = this.#db.prepare("SELECT value FROM settings WHERE key=?").get(key);
-    const saltBase64 = result?.["value"]?.valueOf();
-    if (typeof saltBase64 !== "string") {
-      throw new Error(`invalid "salt" loaded from database: ${saltBase64} [tq8yxth6j4]`);
-    }
-    return Buffer.from(saltBase64, "base64");
-  }
-
-  open(): void {
+  open(encryptionPassword: string): void {
     if (!(this.#state instanceof NewState)) {
       const newStateName: string = new NewState().name;
       throw new Error(
@@ -46,34 +39,36 @@ export class AppData {
     const db = new DatabaseSync(this.file, { enableForeignKeyConstraints: true });
 
     let initialized = false;
+    let crypter: Crypter;
     try {
       initializeDb(db);
       initialized = true;
+      crypter = setupEncryption(db, encryptionPassword);
     } finally {
       if (!initialized) {
         db.close();
       }
     }
 
-    this.#state = new OpenedState(db);
+    this.#state = new OpenedState(db, crypter);
   }
 
-  async insertCredentialsForDomain(domain: string, credentials: unknown): Promise<void> {
-    const statement = this.#db.prepare(`INSERT INTO credentials (domain, data) VALUES (?, ?)`);
-    const encryptedCredentials = await this.#encrypt(credentials);
+  insertCredentialsForDomain(domain: string, credentials: unknown): void {
+    const { db, crypter } = this.#ensureOpenedState();
+    const statement = db.prepare(`INSERT INTO credentials (domain, data) VALUES (?, ?)`);
+    const encryptedCredentials = crypter.encryptToBase64(credentials);
     statement.run(domain, encryptedCredentials);
   }
 
-  async getCredentialsForDomain(domain: string): Promise<unknown[]> {
-    const queryResults = this.#db
-      .prepare(`SELECT data FROM credentials WHERE domain = ?`)
-      .all(domain);
-    const parsedResults: unknown[] = [];
+  getCredentialsForDomain<T>(domain: string): T[] {
+    const { db, crypter } = this.#ensureOpenedState();
+    const queryResults = db.prepare(`SELECT data FROM credentials WHERE domain = ?`).all(domain);
+    const parsedResults: T[] = [];
     for (const queryResult of queryResults) {
-      const data = queryResult["data"]?.valueOf();
-      if (typeof data === "string") {
-        const decryptedData = await this.#decrypt(data);
-        parsedResults.push(decryptedData);
+      const encryptedCredentials = queryResult["data"]?.valueOf();
+      if (typeof encryptedCredentials === "string") {
+        const credentials: T = crypter.decryptFromBase64(encryptedCredentials);
+        parsedResults.push(credentials);
       }
     }
     return parsedResults;
@@ -86,47 +81,6 @@ export class AppData {
       oldState.db.close();
     }
   }
-
-  async #encrypt(data: unknown): Promise<string> {
-    const iv = Buffer.from(generateRandomInitializationVector());
-    const dataBytes = new TextEncoder().encode(JSON.stringify(data));
-    const encryptionKey = await this.#getEncryptionKey();
-
-    const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey, iv);
-    const cipherText1: string = cipher.update(dataBytes, undefined, "base64");
-    const cipherText2: string = cipher.final("base64");
-    const cipherText: string = cipherText1 + cipherText2;
-
-    const encryptedBlob = {
-      cipherTextBase64: cipherText,
-      authTagBase64: cipher.getAuthTag().toString("base64"),
-      initializationVectorBase64: iv.toString("base64"),
-    } satisfies EncryptedBlob;
-    return Buffer.from(new TextEncoder().encode(JSON.stringify(encryptedBlob))).toString("base64");
-  }
-
-  async #decrypt(data: string): Promise<unknown> {
-    const { cipherTextBase64, authTagBase64, initializationVectorBase64 } = JSON.parse(
-      new TextDecoder().decode(Buffer.from(data, "base64")),
-    ) as EncryptedBlob;
-    const authTag = Buffer.from(authTagBase64, "base64");
-    const iv = Buffer.from(initializationVectorBase64, "base64");
-    const encryptionKey = await this.#getEncryptionKey();
-
-    const decipher = crypto.createDecipheriv("aes-256-gcm", encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-    const plainText1 = decipher.update(cipherTextBase64, "base64");
-    const plainText2 = decipher.final();
-    const plainText = Buffer.concat([plainText1, plainText2]);
-
-    return JSON.parse(new TextDecoder().decode(plainText));
-  }
-}
-
-interface EncryptedBlob {
-  cipherTextBase64: string;
-  authTagBase64: string;
-  initializationVectorBase64: string;
 }
 
 class NewState {
@@ -136,9 +90,11 @@ class NewState {
 class OpenedState {
   readonly name = "opened" as const;
   readonly db: DatabaseSync;
+  readonly crypter: Crypter;
 
-  constructor(db: DatabaseSync) {
+  constructor(db: DatabaseSync, crypter: Crypter) {
     this.db = db;
+    this.crypter = crypter;
   }
 }
 
@@ -154,6 +110,17 @@ function initializeDb(db: DatabaseSync): void {
   db.exec("PRAGMA encoding = 'UTF-8'");
   db.exec("PRAGMA foreign_keys = ON");
   migrateDb(db);
+}
+
+function setupEncryption(db: DatabaseSync, encryptionPassword: string): Crypter {
+  const salt = getBinarySetting(db, "salt");
+  if (salt) {
+    return Crypter.fromPasswordAndSalt(encryptionPassword, salt);
+  }
+
+  const { crypter, salt: newSalt } = Crypter.fromPassword(encryptionPassword);
+  setBinarySetting(db, "salt", newSalt);
+  return crypter;
 }
 
 function verifyOrSetApplicationId(db: DatabaseSync): void {
@@ -209,25 +176,36 @@ function createTables(db: DatabaseSync): void {
       value TEXT
     )
   `);
-
-  const salt = generateRandomSalt().toString("base64");
-  db.prepare("INSERT INTO settings (key, value) VALUES ('salt', ?)").run(salt);
 }
 
-function generateRandomSalt() {
-  // 16 bytes of salt is recommended, so double that!
-  return crypto.randomBytes(32);
+function getSetting<T>(db: DatabaseSync, key: string): T | null {
+  const result = db.prepare("SELECT value FROM settings WHERE key=?").get(key);
+  const value = result?.["value"]?.valueOf() ?? null;
+  if (typeof value !== "string") {
+    return null;
+  }
+  return JSON.parse(value);
 }
 
-function generateRandomInitializationVector() {
-  // 12 bytes is the recommended value for the "aes-256-gcm" cipher.
-  return crypto.randomBytes(12);
+function setSetting<T>(db: DatabaseSync, key: string, value: T): void {
+  const jsonEncodedValue = JSON.stringify(value);
+  db.prepare(
+    `
+    INSERT INTO settings (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value=?
+  `,
+  ).run(key, jsonEncodedValue, jsonEncodedValue);
 }
 
-function #calculateEncryptionKey(password: string): Uint8Array {
-  const passwordBytes = new TextEncoder().encode(password);
-  const iterations = 100000;
-  const keyLength = 32;
-  return crypto.pbkdf2Sync(passwordBytes, this.#salt, iterations, keyLength, "sha512");
+function getBinarySetting(db: DatabaseSync, key: string): Uint8Array | null {
+  const value: string | null = getSetting(db, key);
+  if (value === null) {
+    return null;
+  }
+  return uint8ArrayFromBase64String(value);
 }
 
+function setBinarySetting(db: DatabaseSync, key: string, value: Uint8Array): void {
+  return setSetting(db, key, base64StringFromUint8Array(value));
+}

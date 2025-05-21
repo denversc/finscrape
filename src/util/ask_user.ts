@@ -1,5 +1,7 @@
 import { read as getUserInput } from "read";
 
+import { type Logger } from "./logging.ts";
+
 export interface UserAsker {
   ask(options?: Partial<AskOptions>): Promise<string>;
 }
@@ -29,6 +31,12 @@ export function validateUserInput(userInput: unknown, options: AskOptions): stri
 }
 
 export class ReadlineUserAsker implements UserAsker {
+  readonly logger: Logger;
+
+  constructor(logger: Logger) {
+    this.logger = logger;
+  }
+
   async ask(options?: Partial<AskOptions>): Promise<string> {
     const resolvedOptions = resolveOptions(options);
     const { prompt, sensitive: silent } = resolvedOptions;
@@ -38,6 +46,7 @@ export class ReadlineUserAsker implements UserAsker {
       prompt,
       silent,
     });
+    this.logger.info(`Got response for "${prompt}"`);
     return validateUserInput(userInput, resolvedOptions);
   }
 }

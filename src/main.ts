@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import puppeteer from "puppeteer";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -25,16 +27,32 @@ const yargsResult = await yargs(hideBin(process.argv))
   .strict()
   .parse();
 
-const { appDataFile, leaveBrowserOpen, gui: useElectronUserAsker } = yargsResult;
+const { appDataFile, leaveBrowserOpen } = yargsResult;
 
 const logger = getLogger();
+const userAsker = new ReadlineUserAsker(logger);
+
+let password: string;
+if (fs.existsSync(appDataFile)) {
+  password = await userAsker.ask({
+    prompt: `Enter the password for the app data file "${appDataFile}":`,
+    title: "Database Password",
+    sensitive: true,
+  });
+} else {
+  password = await userAsker.ask({
+    prompt: `What password would you like to use for the app data file "${appDataFile}":`,
+    title: "Database Password",
+    sensitive: true,
+  });
+}
+
 const browser = await puppeteer.launch({ headless: false });
-const userAsker = new ReadlineUserAsker();
-const appData = new AppData(appDataFile, userAsker);
+const appData = new AppData(appDataFile);
 const puppeteerHelper = new PuppeteerHelper(logger);
 await puppeteerHelper.start(browser);
 
-appData.open();
+appData.open(password);
 try {
   if (leaveBrowserOpen) {
     td.run(puppeteerHelper, appData, userAsker)

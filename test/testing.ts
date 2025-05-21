@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { expect } from "chai";
+
 import { type AskOptions, type UserAsker } from "../src/util/ask_user.ts";
 
 /**
@@ -52,4 +53,9 @@ export class StubUserAsker implements UserAsker {
     }
     throw new Error(`no response for prompt: "${prompt}" [yfkdzjew8s]`);
   }
+}
+
+export function loadExampleUnicodeBytes(): Uint8Array {
+  const filePath = path.join(import.meta.dirname, "UTF-8-test.txt");
+  return fs.readFileSync(filePath);
 }

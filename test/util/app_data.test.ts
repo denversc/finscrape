@@ -8,8 +8,8 @@ import { AppData } from "../../src/util/app_data.ts";
 import {
   createTempDir,
   expectThrowsContainingStringWithNonAbuttingText,
-  undefinedValue,
   StubUserAsker,
+  undefinedValue,
 } from "../testing.ts";
 
 describe("app_data.test.ts [jrrn9dzv7z]", () => {

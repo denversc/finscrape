@@ -1,14 +1,15 @@
 import crypto from "node:crypto";
 
-export class Crypter {
+import { base64StringFromObject, objectFromBase64String } from "./base64.ts";
 
-  #key: Uint8Array;
+export class Crypter {
+  readonly #key: Uint8Array;
 
   constructor(key: Uint8Array) {
     this.#key = new Uint8Array(key);
   }
 
-  encrypt(data: unknown): Promise<string> {
+  encryptToBase64(data: unknown): string {
     const dataJsonString = JSON.stringify(data);
     const dataBytes = new TextEncoder().encode(dataJsonString);
     const iv = generateRandomInitializationVector();
@@ -23,19 +24,36 @@ export class Crypter {
       authTagBase64: cipher.getAuthTag().toString("base64"),
       initializationVectorBase64: iv.toString("base64"),
     } satisfies EncryptedBlob;
+
+    return base64StringFromObject(encryptedBlob);
+  }
+
+  decryptFromBase64<T>(encryptedData: string): T {
+    const { cipherTextBase64, authTagBase64, initializationVectorBase64 } =
+      objectFromBase64String<EncryptedBlob>(encryptedData);
+    const authTag = Buffer.from(authTagBase64, "base64");
+    const iv = Buffer.from(initializationVectorBase64, "base64");
+
+    const decipher = crypto.createDecipheriv("aes-256-gcm", this.#key, iv);
+    decipher.setAuthTag(authTag);
+    const plainText1: Buffer = decipher.update(cipherTextBase64, "base64");
+    const plainText2: Buffer = decipher.final();
+    const plainText: Buffer = Buffer.concat([plainText1, plainText2]);
+
+    const decryptedObjectJson = new TextDecoder().decode(plainText);
+    return JSON.parse(decryptedObjectJson);
   }
 
   static fromPassword(password: string): CrypterFromPasswordResult {
     const salt = generateRandomSalt();
     const crypter = Crypter.fromPasswordAndSalt(password, salt);
-    return {crypter, salt};
+    return { crypter, salt };
   }
 
   static fromPasswordAndSalt(password: string, salt: Uint8Array): Crypter {
     const key = encryptionKeyFromPasswordAndSalt(password, salt);
     return new Crypter(key);
   }
-
 }
 
 /**
@@ -53,7 +71,7 @@ export interface CrypterFromPasswordResult {
   salt: Uint8Array;
 }
 
-export function encryptionKeyFromPasswordAndSalt(password: string, salt: Uint8Array): Uint8Array {
+function encryptionKeyFromPasswordAndSalt(password: string, salt: Uint8Array): Uint8Array {
   const passwordBytes = new TextEncoder().encode(password);
   const iterations = 100000;
   const keyLength = 32;
@@ -66,16 +84,6 @@ function generateRandomSalt() {
 
 function generateRandomInitializationVector() {
   return crypto.randomBytes(12);
-}
-
-function base64StringFromObject(object: unknown): string {
-  const objectJson = JSON.stringify(object);
-  return Buffer.from(objectJson, "utf8").toString("base64");
-}
-
-function objectFromBase64String(base64String: string): unknown {
-  const objectJson = Buffer.from(base64String, "base64").toString("utf8");
-  return JSON.parse(objectJson);
 }
 
 interface EncryptedBlob {
