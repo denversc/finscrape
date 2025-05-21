@@ -7,7 +7,6 @@ export class AppData {
   readonly file: string;
   readonly userAsker: UserAsker;
   #state: State = new NewState();
-  #memoizedEncryptionKey: Uint8Array | undefined = undefined;
 
   constructor(file: string, userAsker: UserAsker) {
     this.file = file;
@@ -33,23 +32,6 @@ export class AppData {
       throw new Error(`invalid "salt" loaded from database: ${saltBase64} [tq8yxth6j4]`);
     }
     return Buffer.from(saltBase64, "base64");
-  }
-
-  async #getEncryptionKey(): Promise<Uint8Array> {
-    if (typeof this.#memoizedEncryptionKey !== "undefined") {
-      return this.#memoizedEncryptionKey;
-    }
-    const password = await this.userAsker.ask({
-      title: "Application Database Password",
-      prompt: "Enter the application database password:",
-      sensitive: true,
-    });
-    const passwordBytes = new TextEncoder().encode(password);
-    const iterations = 10000;
-    const keyLength = 32;
-    const key = crypto.pbkdf2Sync(passwordBytes, this.#salt, iterations, keyLength, "sha512");
-    this.#memoizedEncryptionKey = key;
-    return key;
   }
 
   open(): void {
@@ -241,3 +223,11 @@ function generateRandomInitializationVector() {
   // 12 bytes is the recommended value for the "aes-256-gcm" cipher.
   return crypto.randomBytes(12);
 }
+
+function #calculateEncryptionKey(password: string): Uint8Array {
+  const passwordBytes = new TextEncoder().encode(password);
+  const iterations = 100000;
+  const keyLength = 32;
+  return crypto.pbkdf2Sync(passwordBytes, this.#salt, iterations, keyLength, "sha512");
+}
+
